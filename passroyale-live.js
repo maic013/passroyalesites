@@ -44,7 +44,7 @@
         if (parent.includes("/100 inscritos")) { el.textContent = count.toLocaleString("pt-BR"); countUpdated = true; }
       });
     }
-    setLeaf(card, s => /^(?:—|–|-|\d+(?:[.,]\d+)?)\s*%\s*(?:da meta)?$/.test(s), el => {
+    setLeaf(card, s => /^(?:[—–-]+|\d+(?:[.,]\d+)?)\s*%\s*(?:da meta)?$/.test(s), el => {
       el.textContent = pct.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + "% da meta";
     });
     setLeaf(card, s => s.includes("conexao aguardando") || s.includes("aguardando conexao") ||
