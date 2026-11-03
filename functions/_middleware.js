@@ -21,9 +21,15 @@ export async function onRequest(context) {
       }
     });
 
+  let diagnostic = "not-checked";
   try {
     // Reuse exactly the same secured server function as GET /api/channel.
     const channel = await channelEndpoint(context);
+    diagnostic = "api-" + channel.status;
+    if (!channel.ok) {
+      const error = await channel.clone().json().catch(() => ({}));
+      diagnostic += "-" + String(error.error || "unknown");
+    }
     if (channel.ok) {
       const info = await channel.json();
       const count = Number(info.subscribers);
@@ -68,7 +74,9 @@ export async function onRequest(context) {
       }
     }
   } catch (error) {
+    diagnostic = "edge-exception";
     console.warn("[Pass Royale] Edge subscriber hydration unavailable:", String(error));
   }
+  rewriter.on("#meta", { element(el) { el.setAttribute("data-edge-check", diagnostic); } });
   return rewriter.transform(response);
 }
