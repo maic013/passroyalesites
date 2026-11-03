@@ -1,146 +1,114 @@
-/* Pass Royale live subscribers / site favicon integration. No API key is exposed. */
+/* Pass Royale subscriber counter. The YouTube key remains server-side. */
 (() => {
   "use strict";
   const GOAL = 100;
-  const ENDPOINT = "/api/channel";
-  const normalize = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const endpoint = "/api/channel";
 
-  function textElements(root) {
-    // When root is a card element, "body *" matches nothing because body is
-    // outside its subtree. Search the subtree itself instead.
-    const container = root.nodeType === 9 ? root.body : root;
-    return [...container.querySelectorAll("*")].filter(el =>
-      el.children.length === 0 && el.textContent?.trim());
-  }
-  function setLeaf(root, match, update) {
-    for (const el of textElements(root)) {
-      if (match(normalize(el.textContent), el)) update(el);
-    }
-  }
-  function findMissionCard() {
-    const label = textElements(document).find(el => normalize(el.textContent).includes("rumo aos 100"));
-    if (!label) return null;
-    let node = label;
-    for (let i = 0; i < 8 && node?.parentElement; i++, node = node.parentElement) {
-      const content = normalize(node.textContent);
-      if (content.includes("100 inscritos") && (content.includes("barra de elixir") || content.includes("meta"))) {
-        return node;
-      }
-    }
-    return label.closest("section, article") || label.parentElement?.parentElement;
+  function getCard() {
+    return document.getElementById("meta");
   }
 
-  function updateCount(count) {
-    const card = findMissionCard();
-    if (!card) return;
-    const pct = Math.min(100, Math.max(0, count / GOAL * 100));
-    let countUpdated = false;
-    setLeaf(card, s => /^([—–-]|\d[\d.,]*)\s*\/\s*100\s*inscritos$/.test(s), el => {
-      el.textContent = count.toLocaleString("pt-BR") + " /100 inscritos";
-      countUpdated = true;
-    });
-    // Some versions wrap the number in its own element.
-    if (!countUpdated) {
-      setLeaf(card, s => /^([—–-]|\d[\d.,]*)\s*$/.test(s), el => {
-        if (countUpdated) return;
-        const parent = normalize(el.parentElement?.textContent);
-        if (parent.includes("/100 inscritos")) { el.textContent = count.toLocaleString("pt-BR"); countUpdated = true; }
-      });
-    }
-    setLeaf(card, s => /^(?:[—–-]+|\d+(?:[.,]\d+)?)\s*%\s*(?:da meta)?$/.test(s), el => {
-      el.textContent = pct.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + "% da meta";
-    });
-    setLeaf(card, s => s.includes("conexao aguardando") || s.includes("aguardando conexao") ||
-      s.includes("esperando os dados do canal") || s.includes("conexao com o youtube estiver ativa"), el => {
-      if (normalize(el.textContent).includes("barra de elixir")) {
-        el.textContent = "Nossa barra de elixir acompanha os inscritos do canal.";
-      } else if (normalize(el.textContent).includes("contagem")) {
-        el.textContent = "Contagem atualizada com os dados do YouTube.";
-      } else {
-        el.textContent = "● YouTube conectado";
-      }
-    });
+  function setStatus(card, message) {
+    const status = card.querySelector(".goal-heading .status");
+    if (!status) return;
+    // Keep the original YouTube symbol in the status pill.
+    const textNode = [...status.childNodes].find(node => node.nodeType === Node.TEXT_NODE);
+    if (textNode) textNode.textContent = " " + message;
+    else status.appendChild(document.createTextNode(" " + message));
+  }
 
-    const progress = card.querySelector('[role="progressbar"]');
-    if (progress) {
-      progress.setAttribute("aria-valuenow", String(count));
-      progress.setAttribute("aria-valuemax", String(GOAL));
-      progress.style.setProperty("--progress", pct + "%");
-    }
-    const candidates = [...card.querySelectorAll("*")].filter(el => {
-      const cls = String(el.className || "") + " " + String(el.id || "");
-      return /(?:elixir|progress|fill|barra)/i.test(cls) && el.children.length === 0 &&
-        !el.textContent?.trim();
-    });
-    for (const el of candidates) {
-      if (el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height < 32) {
-        el.style.width = pct + "%";
+  function paint(count, stale = false) {
+    const card = getCard();
+    if (!card || !Number.isSafeInteger(count) || count < 0) return;
+    const percent = Math.min(100, count / GOAL * 100);
+    const n = card.querySelector(".goal-numbers strong");
+    const p = card.querySelector(".goal-numbers b");
+    const bar = card.querySelector(".elixir");
+    const fill = card.querySelector(".elixir-fill");
+    const description = card.querySelector(".goal-bottom p");
+    const note = card.querySelector(".fine");
+
+    if (n) n.textContent = count.toLocaleString("pt-BR");
+    if (p) {
+      const small = p.querySelector("small");
+      p.replaceChildren(document.createTextNode(Math.round(percent) + "% "));
+      if (small) p.appendChild(small);
+      else {
+        const x = document.createElement("small");
+        x.textContent = "DA META";
+        p.appendChild(x);
       }
     }
+    if (bar) bar.setAttribute("aria-valuenow", String(Math.min(GOAL, count)));
+    if (fill) fill.style.width = percent + "%";
+    if (description) description.textContent = "Nossa barra de elixir acompanha os inscritos reais do canal.";
+    if (note) note.textContent = stale
+      ? "Última contagem recebida do YouTube; atualização automática em breve."
+      : "Contagem sincronizada com os dados públicos do YouTube.";
+    setStatus(card, stale ? "CONTAGEM RECENTE" : "CONTADOR CONECTADO");
     card.dataset.youtubeSubscribers = String(count);
+    card.dataset.youtubeStatus = stale ? "cached" : "connected";
   }
 
-  function showApiError(message) {
-    const card = findMissionCard();
-    if (!card) return;
-    const statuses = ["conexao aguardando", "aguardando conexao", "youtube conectado",
-      "youtube indisponivel", "falha na consulta", "erro na consulta"];
-    setLeaf(card, value => statuses.some(status => value.includes(status)), el => {
-      el.textContent = "● YouTube indisponível";
-    });
-    card.dataset.youtubeStatus = message || "error";
-  }
-
-  async function updateSubscribers() {
+  async function refresh() {
     try {
-      const response = await fetch(ENDPOINT, { cache: "no-store", headers: { Accept: "application/json" } });
+      const response = await fetch(endpoint, { cache: "no-store", headers: { Accept: "application/json" } });
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}));
         throw new Error(detail.error ? detail.error + " (HTTP " + response.status + ")" : "HTTP " + response.status);
       }
-      const info = await response.json();
-      const count = Number(info.subscribers ?? info.subscriberCount ?? info.count);
-      if (!Number.isSafeInteger(count) || count < 0) throw new Error("Invalid subscribers count");
-      updateCount(count);
-      const card = findMissionCard();
-      if (card) card.dataset.youtubeStatus = "connected";
+      const json = await response.json();
+      const count = Number(json.subscribers ?? json.subscriberCount ?? json.count);
+      if (!Number.isSafeInteger(count) || count < 0) throw new Error("invalid_count");
+      paint(count);
     } catch (error) {
-      showApiError(error.message);
-      console.warn("[Pass Royale] Inscritos indisponíveis:", error.message);
+      const card = getCard();
+      const existing = Number(card?.dataset.youtubeSubscribers);
+      if (card?.dataset.youtubeSubscribers && Number.isSafeInteger(existing)) {
+        // A temporary request failure must never erase the last valid count.
+        paint(existing, true);
+      } else if (card) {
+        setStatus(card, "YOUTUBE INDISPONÍVEL");
+        card.dataset.youtubeStatus = "unavailable";
+      }
+      console.warn("[Pass Royale] Falha temporária no contador:", error.message);
     }
   }
 
-  // Use the real brand logo already rendered in the site's navigation as the tab icon.
   function setBrandFavicon() {
-    const images = [...document.querySelectorAll("header img, nav img, img")];
-    const image = images.find(img => {
-      const s = normalize([img.alt, img.id, img.className].join(" "));
-      return (s.includes("pass royale") || s.includes("logo")) && img.naturalWidth > 0;
-    }) || images.find(img => img.closest("header, nav") && img.naturalWidth > 0 &&
-      img.naturalWidth < 1000);
-    if (!image) return;
+    const images = [...document.querySelectorAll("header img, nav img")];
+    const source = images.find(img => img.naturalWidth > 0 && img.naturalWidth < 1500);
+    if (!source) return; // SVG brand favicon from the server remains the fallback.
     try {
       const canvas = document.createElement("canvas");
       canvas.width = canvas.height = 64;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      const scale = Math.min(60 / image.naturalWidth, 60 / image.naturalHeight);
-      const w = image.naturalWidth * scale, h = image.naturalHeight * scale;
-      ctx.drawImage(image, (64 - w)/2, (64 - h)/2, w, h);
-      const link = document.querySelector('link[rel="icon"]') || document.createElement("link");
-      link.rel = "icon";
-      link.type = "image/png";
-      link.href = canvas.toDataURL("image/png");
-      if (!link.isConnected) document.head.appendChild(link);
-    } catch (e) { /* Keep SVG fallback when image cannot be drawn. */ }
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const scale = Math.min(60 / source.naturalWidth, 60 / source.naturalHeight);
+      const width = source.naturalWidth * scale;
+      const height = source.naturalHeight * scale;
+      context.drawImage(source, (64 - width) / 2, (64 - height) / 2, width, height);
+      const icon = document.querySelector('link[rel="icon"]') || document.createElement("link");
+      icon.rel = "icon";
+      icon.type = "image/png";
+      icon.href = canvas.toDataURL("image/png");
+      if (!icon.isConnected) document.head.appendChild(icon);
+    } catch { /* Keep the static fallback icon. */ }
   }
 
   function init() {
+    const card = getCard();
+    const preloaded = card?.dataset.youtubeSubscribers;
+    if (preloaded && /^\d+$/.test(preloaded)) paint(Number(preloaded));
     setBrandFavicon();
-    updateSubscribers();
-    setInterval(updateSubscribers, 60000);
+    refresh();
+    setInterval(refresh, 60000);
     addEventListener("load", setBrandFavicon, { once: true });
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
-  else init();
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init, { once: true });
+  } else {
+    init();
+  }
 })();
