@@ -108,8 +108,10 @@
       if (started || !card) return false;
       started = true;
           const preloaded = card.dataset.youtubeSubscribers;
+      const seeded = Number(window.__PASS_ROYALE_COUNT__);
       if (preloaded && /^\d+$/.test(preloaded)) paint(Number(preloaded));
-      if (!preloaded) setStatus(card, "CONSULTANDO YOUTUBE…");
+      else if (Number.isSafeInteger(seeded) && seeded >= 0 && window.__PASS_ROYALE_COUNT__ != null) paint(seeded);
+      else setStatus(card, "CONSULTANDO YOUTUBE…");
       refresh();
       setInterval(refresh, 60000);
       // Recover gracefully when React re-renders the goal card.
