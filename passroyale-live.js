@@ -6,7 +6,10 @@
   const normalize = s => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
   function textElements(root) {
-    return [...root.querySelectorAll("body *")].filter(el =>
+    // When root is a card element, "body *" matches nothing because body is
+    // outside its subtree. Search the subtree itself instead.
+    const container = root.nodeType === 9 ? root.body : root;
+    return [...container.querySelectorAll("*")].filter(el =>
       el.children.length === 0 && el.textContent?.trim());
   }
   function setLeaf(root, match, update) {
@@ -77,15 +80,32 @@
     card.dataset.youtubeSubscribers = String(count);
   }
 
+  function showApiError(message) {
+    const card = findMissionCard();
+    if (!card) return;
+    const statuses = ["conexao aguardando", "aguardando conexao", "youtube conectado",
+      "youtube indisponivel", "falha na consulta", "erro na consulta"];
+    setLeaf(card, value => statuses.some(status => value.includes(status)), el => {
+      el.textContent = "● YouTube indisponível";
+    });
+    card.dataset.youtubeStatus = message || "error";
+  }
+
   async function updateSubscribers() {
     try {
       const response = await fetch(ENDPOINT, { cache: "no-store", headers: { Accept: "application/json" } });
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail.error ? detail.error + " (HTTP " + response.status + ")" : "HTTP " + response.status);
+      }
       const info = await response.json();
       const count = Number(info.subscribers ?? info.subscriberCount ?? info.count);
       if (!Number.isSafeInteger(count) || count < 0) throw new Error("Invalid subscribers count");
       updateCount(count);
+      const card = findMissionCard();
+      if (card) card.dataset.youtubeStatus = "connected";
     } catch (error) {
+      showApiError(error.message);
       console.warn("[Pass Royale] Inscritos indisponíveis:", error.message);
     }
   }
