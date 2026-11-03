@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="#fff0a2"/><stop offset=".45" stop-color="#ffcc31"/><stop offset="1" stop-color="#de7800"/></linearGradient></defs>
+<rect x="3" y="3" width="58" height="58" rx="13" fill="#08316b" stroke="#ffdc51" stroke-width="4"/>
+<path d="M15 15h34l-4 28-13 12-13-12z" fill="url(#g)" stroke="#7c4100" stroke-width="2"/>
+<path d="M18 26l5-6 9 6 9-6 5 6-3 11H21z" fill="#1655c6" stroke="#fff4a9" stroke-width="1.5"/>
+<text x="32" y="44" text-anchor="middle" font-family="Arial,sans-serif" font-size="19" font-weight="900" fill="#082f71">PR</text>
+</svg>
