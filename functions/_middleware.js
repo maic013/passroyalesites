@@ -1,7 +1,31 @@
-import { onRequestGet as channelEndpoint } from "./api/channel.js";
+// Cloudflare Pages middleware for the standalone, self-contained React site.
+// The exported index.html still contains an offline-preview fetch stub which
+// intercepts /api/channel and always returns HTTP 503. Because the original
+// HTML is ~18MB, disable ONLY that stale stub before its inline bundle runs.
+// The real /api/channel remains available through functions/api/channel.js.
+const restoreLiveYouTubeFetch = `
+(function () {
+  const original = window.fetch.bind(window);
+  let handled = false;
+  Object.defineProperty(window, "fetch", {
+    configurable: true,
+    enumerable: true,
+    get() { return original; },
+    set(candidate) {
+      // The offline preview assigns this function once while bootstrapping.
+      // Ignore that one assignment and restore a normal writable fetch.
+      const isOfflineStub = !handled && typeof candidate === "function" &&
+        Function.prototype.toString.call(candidate).includes("/api/channel");
+      handled = true;
+      Object.defineProperty(window, "fetch", {
+        configurable: true, enumerable: true, writable: true,
+        value: isOfflineStub ? original : candidate
+      });
+    }
+  });
+})();
+`;
 
-// Render the subscriber goal with live data at the Cloudflare edge. This keeps
-// the counter useful even when visitors' browsers cannot call the API directly.
 export async function onRequest(context) {
   const response = await context.next();
   const pathname = new URL(context.request.url).pathname;
@@ -11,72 +35,16 @@ export async function onRequest(context) {
     return response;
   }
 
-  const rewriter = new HTMLRewriter()
+  return new HTMLRewriter()
     .on("head", {
       element(element) {
         element.append(
-          '<link rel="icon" type="image/svg+xml" href="/passroyale-favicon.svg"><script src="/passroyale-live.js" defer></script>',
+          '<link rel="icon" type="image/svg+xml" href="/passroyale-favicon.svg">' +
+          '<script>' + restoreLiveYouTubeFetch + '</script>' +
+          '<script src="/passroyale-live.js" defer></script>',
           { html: true }
         );
       }
-    });
-
-  let diagnostic = "not-checked";
-  try {
-    // Reuse exactly the same secured server function as GET /api/channel.
-    const channel = await channelEndpoint(context);
-    diagnostic = "api-" + channel.status;
-    if (!channel.ok) {
-      const error = await channel.clone().json().catch(() => ({}));
-      diagnostic += "-" + String(error.error || "unknown");
-    }
-    if (channel.ok) {
-      const info = await channel.json();
-      const count = Number(info.subscribers);
-      if (Number.isSafeInteger(count) && count >= 0) {
-        const percentage = Math.min(100, Math.round((count / 100) * 100));
-        rewriter
-          .on("#meta", {
-            element(el) {
-              el.setAttribute("data-youtube-subscribers", String(count));
-              el.setAttribute("data-youtube-status", "connected");
-            }
-          })
-          .on("#meta .goal-numbers strong", {
-            element(el) { el.setInnerContent(count.toLocaleString("pt-BR")); }
-          })
-          .on("#meta .goal-numbers b", {
-            element(el) {
-              el.setInnerContent(percentage + '% <small>DA META</small>', { html: true });
-            }
-          })
-          .on("#meta .status", {
-            element(el) {
-              // Retain the existing YouTube SVG icon.
-              el.setInnerContent(
-                '<svg class="youtube-mark" width="16" height="16" viewBox="0 0 28 20" aria-hidden="true"><rect width="28" height="20" rx="6" fill="#ff0033"></rect><path d="M11 5.5L19 10l-8 4.5z" fill="white"></path></svg> CONTADOR CONECTADO',
-                { html: true }
-              );
-            }
-          })
-          .on("#meta .elixir", {
-            element(el) { el.setAttribute("aria-valuenow", String(Math.min(100, count))); }
-          })
-          .on("#meta .elixir-fill", {
-            element(el) { el.setAttribute("style", "width: " + percentage + "%;"); }
-          })
-          .on("#meta .goal-bottom p", {
-            element(el) { el.setInnerContent("Nossa barra de elixir acompanha os inscritos reais do canal."); }
-          })
-          .on("#meta .fine", {
-            element(el) { el.setInnerContent("Contagem sincronizada com os dados públicos do YouTube."); }
-          });
-      }
-    }
-  } catch (error) {
-    diagnostic = "edge-exception";
-    console.warn("[Pass Royale] Edge subscriber hydration unavailable:", String(error));
-  }
-  rewriter.on("#meta", { element(el) { el.setAttribute("data-edge-check", diagnostic); } });
-  return rewriter.transform(response);
+    })
+    .transform(response);
 }
