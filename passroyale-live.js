@@ -1,6 +1,7 @@
 /* Pass Royale subscriber counter. The YouTube key remains server-side. */
 (() => {
   "use strict";
+  document.documentElement.dataset.prCounterJs = "loaded";
   const GOAL = 100;
   const endpoint = "/api/channel";
 
@@ -51,6 +52,7 @@
   }
 
   async function refresh() {
+    document.documentElement.dataset.prCounterJs = "requesting";
     try {
       const response = await fetch(endpoint, { cache: "no-store", headers: { Accept: "application/json" } });
       if (!response.ok) {
@@ -61,7 +63,9 @@
       const count = Number(json.subscribers ?? json.subscriberCount ?? json.count);
       if (!Number.isSafeInteger(count) || count < 0) throw new Error("invalid_count");
       paint(count);
+      document.documentElement.dataset.prCounterJs = "success";
     } catch (error) {
+      document.documentElement.dataset.prCounterJs = "failed:" + String(error.message).slice(0,90);
       const card = getCard();
       const existing = Number(card?.dataset.youtubeSubscribers);
       if (card?.dataset.youtubeSubscribers && Number.isSafeInteger(existing)) {
@@ -99,6 +103,7 @@
   }
 
   function init() {
+    document.documentElement.dataset.prCounterJs = "initialized";
     // React mounts #meta asynchronously after DOMContentLoaded. Do not fetch
     // before the card exists, or the first result gets dropped.
     setBrandFavicon();
@@ -107,6 +112,7 @@
       const card = getCard();
       if (started || !card) return false;
       started = true;
+      document.documentElement.dataset.prCounterJs = "card-ready";
       const preloaded = card.dataset.youtubeSubscribers;
       if (preloaded && /^\d+$/.test(preloaded)) paint(Number(preloaded));
       refresh();
