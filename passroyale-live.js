@@ -76,6 +76,8 @@
   }
 
   function setBrandFavicon() {
+    // Preserve the Pass Royale v2.8 WebP favicon selected by the site.
+    if (document.querySelector('link[rel="icon"][type="image/webp"]')) return;
     const images = [...document.querySelectorAll("header img, nav img")];
     const source = images.find(img => img.naturalWidth > 0 && img.naturalWidth < 1500);
     if (!source) return; // SVG brand favicon from the server remains the fallback.

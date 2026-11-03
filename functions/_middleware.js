@@ -39,7 +39,6 @@ export async function onRequest(context) {
     .on("head", {
       element(element) {
         element.append(
-          '<link rel="icon" type="image/svg+xml" href="/passroyale-favicon.svg">' +
           '<script>' + restoreLiveYouTubeFetch + '</script>' +
           '<script src="/passroyale-live.js" defer></script>',
           { html: true }
