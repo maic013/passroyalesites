@@ -99,12 +99,36 @@
   }
 
   function init() {
-    const card = getCard();
-    const preloaded = card?.dataset.youtubeSubscribers;
-    if (preloaded && /^\d+$/.test(preloaded)) paint(Number(preloaded));
+    // React mounts #meta asynchronously after DOMContentLoaded. Do not fetch
+    // before the card exists, or the first result gets dropped.
     setBrandFavicon();
-    refresh();
-    setInterval(refresh, 60000);
+    let started = false;
+    const startIfReady = () => {
+      const card = getCard();
+      if (started || !card) return false;
+      started = true;
+      const preloaded = card.dataset.youtubeSubscribers;
+      if (preloaded && /^\d+$/.test(preloaded)) paint(Number(preloaded));
+      refresh();
+      setInterval(refresh, 60000);
+      // Recover gracefully when React re-renders the goal card.
+      setInterval(() => {
+        const current = getCard();
+        if (!current || !current.dataset.youtubeSubscribers) return;
+        const count = Number(current.dataset.youtubeSubscribers);
+        if (!Number.isSafeInteger(count) || count < 0) return;
+        const shown = current.querySelector(".goal-numbers strong")?.textContent?.trim();
+        if (shown !== count.toLocaleString("pt-BR"))
+          paint(count, current.dataset.youtubeStatus === "cached");
+      }, 8000);
+      return true;
+    };
+    if (!startIfReady()) {
+      const watcher = new MutationObserver(() => {
+        if (startIfReady()) watcher.disconnect();
+      });
+      watcher.observe(document.body, { childList: true, subtree: true });
+    }
     addEventListener("load", setBrandFavicon, { once: true });
   }
 
